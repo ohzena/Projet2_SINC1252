@@ -1,6 +1,6 @@
 GCC=gcc
 FLAGS=-g -Wall -Werror
-INCLUDE_HEADERS_DIRECTORY=-Iheaders
+
 
 all: tests lib_tar.o
 
@@ -12,8 +12,6 @@ tests: tests.c lib_tar.o
 	./tests.o tester.tar
 
 tests: tests.c lib_tar.o
-	$(GCC) $(INCLUDE_HEADERS_DIRECTORY) $(CFLAGS) -o $@ tests.c lib_tar.c
-
 
 clean:
 	rm -f lib_tar.o tests soumission.tar
