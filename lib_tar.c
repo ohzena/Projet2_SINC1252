@@ -1,5 +1,17 @@
+#include <stdio.h>
+#include <sys/types.h>
+#include <errno.h>
+#define LIB_TAR_H
+#define LIB_TAR_H
 #include "lib_tar.h"
-
+#include <stdlib.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
 /**
  * Checks whether the archive is valid.
  *
@@ -15,22 +27,66 @@
  *         -2 if the archive contains a header with an invalid version value,
  *         -3 if the archive contains a header with an invalid checksum value
  */
-int check_archive(int tar_fd) {
-    return 0;
-}
+int check_archive(int tar_fd)
+{
+  tar_header_t header;
 
+  int sz = read(tar_fd, &header, sizeof(tar_header_t));
+  if (sz < 0)
+  {
+    perror("Error");
+    return -1;
+  }
+
+  int num_headers = 0;
+  while (sz > 0)
+  {
+    if (strncmp(header.magic, TMAGIC, TMAGLEN) != 0)
+      return -1;
+
+    if (strncmp(header.version, TVERSION, TVERSLEN) != 0)
+      return -2;
+
+    int checksum = 0;
+    for (int i = 0; i < sizeof(tar_header_t); i++)
+      checksum += ((unsigned char*)&header)[i];
+
+    checksum = TAR_INT(checksum);
+
+    if (checksum != header.chksum)
+    {return -3;}
+
+    num_headers++;
+
+    sz = read(tar_fd, &header, sizeof(tar_header_t));
+  }
+
+  return num_headers;
+}
 /**
- * Checks whether an entry exists in the archive.
+ * Checks whether an entry exists in the archive and is a directory.
  *
  * @param tar_fd A file descriptor pointing to the start of a valid tar archive file.
  * @param path A path to an entry in the archive.
  *
- * @return zero if no entry at the given path exists in the archive,
+ * @return zero if no entry at the given path exists in the archive or the entry is not a directory,
  *         any other value otherwise.
  */
 int exists(int tar_fd, char *path) {
-    return 0;
+  tar_header_t header;
+  ssize_t read_size;
+
+  lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
+
+  while ((read_size = read(tar_fd, &header, sizeof(tar_header_t))) > 0) {
+    if (strcmp(path, header.name) == 0) {
+      return 1;  // Entry exists
+    }
+    lseek(tar_fd, TAR_INT(header.size), 1);  // Move file descriptor to the next header
+  }
+  return 0;  // Entry does not exist
 }
+
 
 /**
  * Checks whether an entry exists in the archive and is a directory.
@@ -42,9 +98,52 @@ int exists(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int is_dir(int tar_fd, char *path) {
-    return 0;
+  tar_header_t header;
+  ssize_t read_size;
+
+  lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
+
+  while ((read_size = read(tar_fd, &header, sizeof(tar_header_t))) > 0) {
+    if (strcmp(path, header.name) == 0) {
+      if (header.typeflag == DIRTYPE) {
+        return 1;  // Entry is a directory
+      } else {
+        return 0;  // Entry is not a directory
+      }
+    }
+    lseek(tar_fd, TAR_INT(header.size), 1);  // Move file descriptor to the next header
+  }
+  return 0;  // Entry does not exist
 }
 
+
+/**
+ * Checks whether an entry exists in the archive and is a symlink.
+ *
+ * @param tar_fd A file descriptor pointing to the start of a valid tar archive file.
+ * @param path A path to an entry in the archive.
+ *
+ * @return zero if no entry at the given path exists in the archive or the entry is not symlink,
+ *         any other value otherwise.
+ */
+int is_symlink(int tar_fd, char *path) {
+  tar_header_t header;
+  ssize_t read_size;
+
+  lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
+
+  while ((read_size = read(tar_fd, &header, sizeof(tar_header_t))) > 0) {
+    if (strcmp(path, header.name) == 0) {
+      if (header.typeflag == SYMTYPE) {
+        return 1;  // Entry is a symlink
+      } else {
+        return 0;  // Entry is not a symlink
+      }
+    }
+    lseek(tar_fd, TAR_INT(header.size), 1);  // Move file descriptor to the next header
+  }
+  return 0;  // Entry does not exist
+}
 /**
  * Checks whether an entry exists in the archive and is a file.
  *
@@ -54,22 +153,30 @@ int is_dir(int tar_fd, char *path) {
  * @return zero if no entry at the given path exists in the archive or the entry is not a file,
  *         any other value otherwise.
  */
-int is_file(int tar_fd, char *path) {
-    return 0;
-}
+ int is_file(int tar_fd, char *path) {
+  tar_header_t header;
 
-/**
- * Checks whether an entry exists in the archive and is a symlink.
- *
- * @param tar_fd A file descriptor pointing to the start of a valid tar archive file.
- * @param path A path to an entry in the archive.
- * @return zero if no entry at the given path exists in the archive or the entry is not symlink,
- *         any other value otherwise.
- */
-int is_symlink(int tar_fd, char *path) {
-    return 0;
-}
+  // seek to the start of the tar archive
+  lseek(tar_fd, 0, SEEK_SET);
 
+  // read through the archive, one block at a time
+  while (read(tar_fd, &header, BLOCK_SIZE) == BLOCK_SIZE) {
+    // check if the current entry is the one we're looking for
+    if (strcmp(header.name, path) == 0) {
+      // check if the entry is a file (typeflag '0' or '\0')
+      if (header.typeflag == '0' || header.typeflag == '\0') {
+        return 1;
+      } else {
+        return 0;
+      }
+    }
+
+    lseek(tar_fd, TAR_INT(header.size), 1);
+  }
+
+  // if we reach this point, it means the entry was not found
+  return 0;
+}
 
 /**
  * Lists the entries at a given path in the archive.
@@ -94,27 +201,38 @@ int is_symlink(int tar_fd, char *path) {
  *         any other value otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-    return 0;
-}
+  tar_header_t header;
+  int found_dir = 0;
+  size_t count = 0;
 
-/**
- * Reads a file at a given path in the archive.
- *
- * @param tar_fd A file descriptor pointing to the start of a valid tar archive file.
- * @param path A path to an entry in the archive to read from.  If the entry is a symlink, it must be resolved to its linked-to entry.
- * @param offset An offset in the file from which to start reading from, zero indicates the start of the file.
- * @param dest A destination buffer to read the given file into.
- * @param len An in-out argument.
- *            The caller set it to the size of dest.
- *            The callee set it to the number of bytes written to dest.
- *
- * @return -1 if no entry at the given path exists in the archive or the entry is not a file,
- *         -2 if the offset is outside the file total length,
- *         zero if the file was read in its entirety into the destination buffer,
- *         a positive value if the file was partially read, representing the remaining bytes left to be read to reach
- *         the end of the file.
- *
- */
-ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
-    return 0;
+  // seek to the start of the tar archive
+  lseek(tar_fd, 0, SEEK_SET);
+
+  // read through the archive, one block at a time
+  while (read(tar_fd, &header, BLOCK_SIZE) == BLOCK_SIZE) {
+    // check if the current entry is in the given path
+    if (strncmp(header.name, path, strlen(path)) == 0) {
+      // check if the entry is a directory (typeflag '5')
+      if (is_dir(tar_fd, path)) {
+        found_dir = 1;
+      } else {
+        // add the entry to the list if it is a file or symlink
+        strcpy(entries[count], header.name);
+        count++;
+      }
+    }
+
+    // check if we have reached the end of the entries in the given path
+    if (found_dir && strncmp(header.name, path, strlen(path)) != 0) {
+      break;
+    }
+
+    // compute the size of the entry and seek to the next block
+    lseek(tar_fd, (TAR_INT(header.size) / BLOCK_SIZE + 1) * BLOCK_SIZE, SEEK_CUR);
+  }
+
+  *no_entries = count;
+
+  // return 1 if a directory was found, 0 otherwise
+  return found_dir;
 }
