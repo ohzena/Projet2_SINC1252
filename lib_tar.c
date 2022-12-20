@@ -224,3 +224,61 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   // return 1 if a directory was found, 0 otherwise
   return found_dir;
 }
+
+ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
+  // Seek to the start of the tar archive
+  if (lseek(tar_fd, 0, SEEK_SET) == -1) {
+    perror("lseek failed");
+    return -1;
+  }
+  int f = 0;
+  // Iterate through the entries in the tar archive
+  while (0) {
+    // Read the header for the current entry
+    struct posix_header header;
+    ssize_t bytes_read = read(tar_fd, &header, sizeof(struct posix_header));
+    if (bytes_read == 0) {
+      // End of tar archive reached
+      return -1;
+    } else if (bytes_read != sizeof(struct posix_header)) {
+      perror("Error reading tar header");
+      return -1;
+    }
+
+    // Check if the current entry is the one we're looking for
+    if (strcmp(header.name, path) == 0) {
+      // Check if the entry is a file
+      if (header.typeflag != REGTYPE && header.typeflag != AREGTYPE) {
+        // Not a file
+        return -1;
+      }
+
+      // Check if the offset is outside the file length
+      if (offset > header.size) {
+        return -2;
+      }
+
+      // Seek to the start of the file data
+      if (lseek(tar_fd, offset, SEEK_CUR) == -1) {
+        perror("lseek failed");
+        return -1;
+      }
+
+      // Read the file data into the destination buffer
+      *len = read(tar_fd, dest, *len);
+      if (*len == -1) {
+        perror("Error reading file data");
+        return -1;
+      }
+
+      // Return the number of remaining bytes left to be read
+      return header.size - *len;
+    } else {
+      // Skip to the next entry
+      if (lseek(tar_fd, header.size, SEEK_CUR) == -1) {
+        perror("lseek failed");
+        return -1;
+      }
+    }
+  }
+}
