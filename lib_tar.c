@@ -19,15 +19,15 @@ int check_archive(int tar_fd)
 {
   tar_header_t header;
 
-  int sz = read(tar_fd, &header, sizeof(tar_header_t));
-  if (sz < 0)
+  int value = read(tar_fd, &header, sizeof(tar_header_t));
+  if (value < 0)
   {
     perror("Error");
     return -1;
   }
 
   int num_headers = 0;
-  while (sz > 0)
+  while (value > 0)
   {
     if (strncmp(header.magic, TMAGIC, TMAGLEN) != 0)
       return -1;
@@ -46,7 +46,7 @@ int check_archive(int tar_fd)
 
     num_headers++;
 
-    sz = read(tar_fd, &header, sizeof(tar_header_t));
+    value = read(tar_fd, &header, sizeof(tar_header_t));
   }
 
   return num_headers;
@@ -62,7 +62,7 @@ int check_archive(int tar_fd)
  */
 int exists(int tar_fd, char *path) {
   tar_header_t header;
-  ssize_t read_size;
+  size_t read_size;
 
   lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
 
@@ -87,7 +87,7 @@ int exists(int tar_fd, char *path) {
  */
 int is_dir(int tar_fd, char *path) {
   tar_header_t header;
-  ssize_t read_size;
+  size_t read_size;
 
   lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
 
@@ -116,7 +116,7 @@ int is_dir(int tar_fd, char *path) {
  */
 int is_symlink(int tar_fd, char *path) {
   tar_header_t header;
-  ssize_t read_size;
+  size_t read_size;
 
   lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
 
@@ -190,7 +190,7 @@ int is_symlink(int tar_fd, char *path) {
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   tar_header_t header;
-  int found_dir = 0;
+  int dir_found = 0;
   size_t count = 0;
 
   // seek to the start of the tar archive
@@ -202,7 +202,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     if (strncmp(header.name, path, strlen(path)) == 0) {
       // check if the entry is a directory (typeflag '5')
       if (is_dir(tar_fd, path)) {
-        found_dir = 1;
+        dir_found = 1;
       } else {
         // add the entry to the list if it is a file or symlink
         strcpy(entries[count], header.name);
@@ -211,7 +211,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     }
 
     // check if we have reached the end of the entries in the given path
-    if (found_dir && strncmp(header.name, path, strlen(path)) != 0) {
+    if (dir_found && strncmp(header.name, path, strlen(path)) != 0) {
       break;
     }
 
@@ -222,7 +222,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   *no_entries = count;
 
   // return 1 if a directory was found, 0 otherwise
-  return found_dir;
+  return dir_found;
 }
 
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
