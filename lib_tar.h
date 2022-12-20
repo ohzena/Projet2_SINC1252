@@ -5,6 +5,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 typedef struct posix_header
 {                              /* byte offset */
@@ -39,6 +45,7 @@ typedef struct posix_header
 #define SYMTYPE  '2'            /* reserved */
 #define DIRTYPE  '5'            /* directory */
 
+#define BLOCK_SIZE 512
 /* Converts an ASCII-encoded octal-based number into a regular integer */
 #define TAR_INT(char_ptr) strtol(char_ptr, NULL, 8)
 
