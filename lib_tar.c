@@ -1,17 +1,5 @@
-#include <stdio.h>
-#include <sys/types.h>
-#include <errno.h>
-#define LIB_TAR_H
-#define LIB_TAR_H
 #include "lib_tar.h"
-#include <stdlib.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
+
 /**
  * Checks whether the archive is valid.
  *
