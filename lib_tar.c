@@ -235,87 +235,29 @@ int is_symlink(int tar_fd, char *path) {
  * @return zero if no directory at the given path exists in the archive,
  *         any other size otherwise.
  */
-int list(int tar_fd, char *path, char **entries, size_t *no_entries)
-{
-    // Check if the tar archive is valid
-    int num_headers = check_archive(tar_fd);
-    if (num_headers < 0)
-    {
-        // Invalid tar archive
-        return 0;
-    }
-
-    // Check if the given path exists in the tar archive
-    if (!exists(tar_fd, path))
-    {
-        // Path does not exist
-        return 0;
-    }
-
-    // Check if the given path is a directory
-    if (!is_symlink(tar_fd, path))
-    {
-        // Path is not a directory
-        return 0;
-    }
-
-    // Initialize variables
+int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     tar_header_t header;
-    char header_buf[BLOCK_SIZE];
-    char entry_path[BLOCK_SIZE];
-    int entry_count = 0;
-    size_t path_len = strlen(path);
-    int ret;
+    ssize_t read_size;
 
-    // Seek to the start of the tar archive
-    lseek(tar_fd, 0, SEEK_SET);
+    lseek(tar_fd, 0, SEEK_SET); 
 
-    // Iterate through all the headers in the tar archive
-    for (int i = 0; i < num_headers; i++)
-    {
-        // Read the header
-        ret = read(tar_fd, header_buf, BLOCK_SIZE);
-        if (ret < 0)
-        {
-            // Error reading header
-            return 0;
-        }
-
-        // Parse the header
-        memcpy(&header, header_buf, sizeof(tar_header_t));
-
-        // Check if the entry is a directory or a regular file
-        if (header.typeflag == DIRTYPE || header.typeflag == REGTYPE)
-        {
-            // Check if the entry is at the given path
-            if (strncmp(path, header.name, path_len) == 0)
-            {
-                // Construct the entry path
-                snprintf(entry_path, BLOCK_SIZE, "%s", header.name);
-
-                // Add the entry to the list
-                strncpy(entries[entry_count], entry_path, BLOCK_SIZE);
-                entry_count++;
+    size_t count = 0;  
+    while ((read_size = read(tar_fd, &header, sizeof(tar_header_t))) > 0) {
+        
+        if (strncmp(path, header.name, strlen(path)) == 0) {
+            
+            if (header.typeflag == DIRTYPE || header.typeflag == REGTYPE || header.typeflag == AREGTYPE) {
+                
+                strcpy(entries[count], header.name);
+                count++;
             }
         }
-
-        // Skip the contents of the entry
-        lseek(tar_fd, TAR_INT(header.size), SEEK_CUR);
-
-        // Skip padding
-        ret = lseek(tar_fd, BLOCK_SIZE - (TAR_INT(header.size) % BLOCK_SIZE), SEEK_CUR);
-        if (ret < 0)
-        {
-            // Error seeking to the next header
-            return 0;
-        }
+        lseek(tar_fd, TAR_INT(header.size), 1);  
     }
 
-    // Set the number of entries listed
-    *no_entries = entry_count;
+    *no_entries = count;
 
-    // Return success
-    return 1;
+    return (count > 0); 
 }
 
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
