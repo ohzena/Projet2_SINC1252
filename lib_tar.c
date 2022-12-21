@@ -4,30 +4,30 @@
  * Checks whether the archive is valid.
  *
  * Each non-null header of a valid archive has:
- *  - a magic value of "ustar" and a null,
- *  - a version value of "00" and no null,
+ *  - a magic size of "ustar" and a null,
+ *  - a version size of "00" and no null,
  *  - a correct checksum
  *
  * @param tar_fd A file descriptor pointing to the start of a file supposed to contain a tar archive.
  *
- * @return a zero or positive value if the archive is valid, representing the number of non-null headers in the archive,
- *         -1 if the archive contains a header with an invalid magic value,
- *         -2 if the archive contains a header with an invalid version value,
- *         -3 if the archive contains a header with an invalid checksum value
+ * @return a zero or positive size if the archive is valid, representing the number of non-null headers in the archive,
+ *         -1 if the archive contains a header with an invalid magic size,
+ *         -2 if the archive contains a header with an invalid version size,
+ *         -3 if the archive contains a header with an invalid checksum size
  */
 int check_archive(int tar_fd)
 {
   tar_header_t header;
-
-  int value = read(tar_fd, &header, sizeof(tar_header_t));
-  if (value < 0)
+  
+  int size = read(tar_fd, &header, sizeof(tar_header_t));
+  if (size < 0)
   {
     perror("Error");
     return -1;
   }
 
   int num_headers = 0;
-  while (value > 0)
+  while (size > 0)
   {
     if (strncmp(header.magic, TMAGIC, TMAGLEN) != 0)
       return -1;
@@ -36,17 +36,17 @@ int check_archive(int tar_fd)
       return -2;
 
     int checksum = 0;
-    for (int i = 0; i < sizeof(tar_header_t); i++)
-      checksum += ((unsigned char*)&header)[i];
+    char *header_ptr = (char*) &header;
+    for (int i = 0; i < sizeof(tar_header_t); i++) {
+        checksum += header_ptr[i];
+    }
 
-    checksum = TAR_INT(checksum);
 
-    if (checksum != header.chksum)
-    {return -3;}
+    if (TAR_INT(header.chksum) != checksum) return -3;
 
     num_headers++;
 
-    value = read(tar_fd, &header, sizeof(tar_header_t));
+    size = read(tar_fd, &header, sizeof(tar_header_t));
   }
 
   return num_headers;
@@ -58,11 +58,11 @@ int check_archive(int tar_fd)
  * @param path A path to an entry in the archive.
  *
  * @return zero if no entry at the given path exists in the archive or the entry is not a directory,
- *         any other value otherwise.
+ *         any other size otherwise.
  */
 int exists(int tar_fd, char *path) {
   tar_header_t header;
-  size_t read_size;
+  ssize_t read_size;
 
   lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
 
@@ -83,11 +83,11 @@ int exists(int tar_fd, char *path) {
  * @param path A path to an entry in the archive.
  *
  * @return zero if no entry at the given path exists in the archive or the entry is not a directory,
- *         any other value otherwise.
+ *         any other size otherwise.
  */
 int is_dir(int tar_fd, char *path) {
   tar_header_t header;
-  size_t read_size;
+  ssize_t read_size;
 
   lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
 
@@ -112,11 +112,11 @@ int is_dir(int tar_fd, char *path) {
  * @param path A path to an entry in the archive.
  *
  * @return zero if no entry at the given path exists in the archive or the entry is not symlink,
- *         any other value otherwise.
+ *         any other size otherwise.
  */
 int is_symlink(int tar_fd, char *path) {
   tar_header_t header;
-  size_t read_size;
+  ssize_t read_size;
 
   lseek(tar_fd, 0, SEEK_SET);  // Move the file descriptor back to the start of the TAR archive
 
@@ -139,7 +139,7 @@ int is_symlink(int tar_fd, char *path) {
  * @param path A path to an entry in the archive.
  *
  * @return zero if no entry at the given path exists in the archive or the entry is not a file,
- *         any other value otherwise.
+ *         any other size otherwise.
  */
  int is_file(int tar_fd, char *path) {
   tar_header_t header;
@@ -184,9 +184,9 @@ int is_symlink(int tar_fd, char *path) {
  * @param no_entries An in-out argument.
  *                   The caller set it to the number of entries in `entries`.
  *                   The callee set it to the number of entries listed.
- *
+ * 
  * @return zero if no directory at the given path exists in the archive,
- *         any other value otherwise.
+ *         any other size otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   tar_header_t header;
@@ -231,16 +231,16 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
     perror("lseek failed");
     return -1;
   }
-  int f = 0;
+  
   // Iterate through the entries in the tar archive
   while (0) {
     // Read the header for the current entry
     struct posix_header header;
-    ssize_t bytes_read = read(tar_fd, &header, sizeof(struct posix_header));
-    if (bytes_read == 0) {
+    ssize_t byte = read(tar_fd, &header, sizeof(struct posix_header));
+    if (byte == 0) {
       // End of tar archive reached
       return -1;
-    } else if (bytes_read != sizeof(struct posix_header)) {
+    } else if (byte != sizeof(struct posix_header)) {
       perror("Error reading tar header");
       return -1;
     }
@@ -254,7 +254,7 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
       }
 
       // Check if the offset is outside the file length
-      if (offset > header.size) {
+      if (offset > TAR_INT(header.size)) {
         return -2;
       }
 
@@ -272,13 +272,15 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
       }
 
       // Return the number of remaining bytes left to be read
-      return header.size - *len;
+      long size = strtol(header.size, NULL, 8);
+      return size - *len;
     } else {
       // Skip to the next entry
-      if (lseek(tar_fd, header.size, SEEK_CUR) == -1) {
+      if (lseek(tar_fd, TAR_INT(header.size), SEEK_CUR) == -1) {
         perror("lseek failed");
         return -1;
       }
     }
   }
 }
+
