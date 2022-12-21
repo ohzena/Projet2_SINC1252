@@ -7,7 +7,7 @@ lib_tar.o: lib_tar.c lib_tar.h
 	$(CC) $(CFLAGS) -c lib_tar.c -o lib_tar.o
 
 tests: tests.c lib_tar.o
-	tar --posix --pax-option delete=".*" --pax-option delete="*time*" --no-xattrs --no-acl --no-selinux -c testing.txt empty.txt alpha.txt > tester.tar
+	#tar --posix --pax-option delete=".*" --pax-option delete="*time*" --no-xattrs --no-acl --no-selinux -c testing.txt empty.txt alpha.txt > tester.tar
 	$(CC) $(CFLAGS) -o tests tests.c lib_tar.o 
 
 clean:
