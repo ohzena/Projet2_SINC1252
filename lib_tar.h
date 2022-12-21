@@ -50,6 +50,12 @@ typedef struct posix_header
 #define TAR_INT(char_ptr) strtol(char_ptr, NULL, 8)
 
 /**
+* Vérifie si le chksum d'une archive tar est correct.
+*/
+
+int check_chksum(tar_header_t header);
+
+/**
  * Checks whether the archive is valid.
  *
  * Each non-null header of a valid archive has:
