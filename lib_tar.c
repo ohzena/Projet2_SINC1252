@@ -15,61 +15,53 @@
  *         -2 if the archive contains a header with an invalid version size,
  *         -3 if the archive contains a header with an invalid checksum size
  */
-int check_archive(int tar_fd) {
+int check_archive(int tar_fd)
+{
   tar_header_t header;
+
+  int sz = read(tar_fd, &header, sizeof(tar_header_t));
+  if (sz < 0)
+  {
+    perror("Error");
+    return -1;
+  }
+
   int num_headers = 0;
-  while (1) {
-    size_t bytes = read(tar_fd, &header, sizeof(tar_header_t));
-    if (bytes == 0) {
-      // End of file reached, return number of non-null headers found
-      return num_headers;
-    } else if (bytes < 0) {
-      // Error reading from file
+  while (sz > 0)
+  {
+    if (strncmp(header.magic, TMAGIC, TMAGLEN) != 0)
       return -1;
-    }
-    // Check if the header is null (all fields are set to null characters)
-    int null_header = 1;
-    for (size_t i = 0; i < sizeof(tar_header_t); i++) {
-      if (((char*)&header)[i] != '\0') {
-        null_header = 0;
-        break;
-      }
-    }
-    if (null_header) {
-      // Null header found, skip over it and continue
-      continue;
-    }
 
-    // Check magic value
-    if (strncmp(header.magic, TMAGIC, TMAGLEN) != 0) {
-      return -1;
-    }
-
-    // Check version value
-    if (strncmp(header.version, TVERSION, TVERSLEN) != 0) {
+    if (strncmp(header.version, TVERSION, TVERSLEN) != 0)
       return -2;
-    }
 
-    // Calculate checksum
-    uint64_t chksum = 0;
-    for (size_t i = 0; i < sizeof(tar_header_t); i++) {
-      if (i < 148 || i >= 156) {  // skip over chksum field
-        chksum += ((uint8_t*)&header)[i];
-      }
-    }
-
-    // Check checksum
-    if (TAR_INT(header.chksum) != chksum) {
-      return -3;
-    }
+    if (check_chksum(header) != header.chksum)
+    {return -3;}
 
     num_headers++;
 
-    // Skip over the file data
-    off_t file_size = TAR_INT(header.size);
-    off_t padding_size = (file_size % BLOCK_SIZE == 0) ? 0 : BLOCK_SIZE - (file_size % BLOCK_SIZE);
-    lseek(tar_fd, file_size + padding_size, 1);
+    sz = read(tar_fd, &header, sizeof(tar_header_t));
   }
+
+  return num_headers;
+}
+
+int check_chksum(tar_header_t header) {
+  int sum = 0;
+  char *pos = (char *)&header;
+  int chksum = TAR_INT(header.chksum);
+
+  // Parcourir chaque octet du header
+  for (int i = 0; i < offsetof(tar_header_t, chksum); i++) {
+    sum += (unsigned char)pos[i];
+  }
+
+  // Ignorer les octets du champ chksum
+  for (int i = 0; i < sizeof(header.chksum); i++) {
+    sum += (unsigned char)' ';
+  }
+
+  return sum == chksum;
 }
 /**
  * Checks whether an entry exists in the archive and is a directory.
