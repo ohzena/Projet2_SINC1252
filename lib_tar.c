@@ -35,7 +35,7 @@ int check_archive(int tar_fd)
     if (strncmp(header.version, TVERSION, TVERSLEN) != 0)
       return -2;
 
-    if (check_chksum(header) != header.chksum)
+    if (!check_chksum(header))
     {return -3;}
 
     num_headers++;
@@ -47,21 +47,25 @@ int check_archive(int tar_fd)
 }
 
 int check_chksum(tar_header_t header) {
-  int sum = 0;
-  char *pos = (char *)&header;
-  int chksum = TAR_INT(header.chksum);
+  int i;
+  int checksum = 0;
 
-  // Parcourir chaque octet du header
-  for (int i = 0; i < offsetof(tar_header_t, chksum); i++) {
-    sum += (unsigned char)pos[i];
+  for (i = 0; i < 512; i++) {
+    char c = ((char*)&header)[i];
+    if (i < 148 || i > 155) {
+      // On prend en compte tous les octets de l'en-tête sauf les 8 octets
+      // du champ checksum
+      checksum += (unsigned char)c;
+    } else {
+      // On met à zéro les 8 octets du champ checksum
+      checksum += ' ';
+    }
   }
 
-  // Ignorer les octets du champ chksum
-  for (int i = 0; i < sizeof(header.chksum); i++) {
-    sum += (unsigned char)' ';
-  }
-
-  return sum == chksum;
+  // On convertit le checksum en octal et on le compare au checksum stocké
+  // dans l'en-tête
+  int stored_chksum = TAR_INT(header.chksum);
+  return (checksum == stored_chksum);
 }
 /**
  * Checks whether an entry exists in the archive and is a directory.
