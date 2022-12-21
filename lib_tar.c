@@ -233,7 +233,7 @@ ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *
   }
   
   // Iterate through the entries in the tar archive
-  while (0) {
+  while (1) {
     // Read the header for the current entry
     struct posix_header header;
     ssize_t byte = read(tar_fd, &header, sizeof(struct posix_header));
