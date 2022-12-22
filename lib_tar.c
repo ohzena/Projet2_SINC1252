@@ -270,7 +270,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
 
   if (header->typeflag == DIRTYPE) {
     int count = 0;
-    tar_header_t* curr_header = malloc(sizeof(tar_header_t));
+    tar_header_t* curr_header = calloc(1, sizeof(tar_header_t));
     if (curr_header == NULL) {
       free(header);
       return -1;
@@ -278,7 +278,21 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
 
     while ((read_bytes = read(tar_fd, curr_header, sizeof(tar_header_t))) > 0) {
       if (strncmp(curr_header->name, path, strlen(path)) == 0) {
-        entries[count] = strdup(curr_header->name);
+        if (count >= 300) {
+          free(header);
+          free(curr_header);
+          return -1;
+        }
+        size_t name_len = strlen(curr_header->name);
+        if (name_len > 256) {
+        name_len = 256;
+        }
+        entries[count] = malloc(name_len + 1);
+        if (entries[count] == NULL) {
+        // Error handling
+        }
+        strncpy(entries[count], curr_header->name, name_len);
+        entries[count][name_len] = '\0';
         if (entries[count] == NULL) {
           free(header);
           free(curr_header);
@@ -311,7 +325,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
       free(header);
       return -1;
     }
-    sprintf(new_path, "%s/%s", path, link_target);
+    snprintf(new_path, MAX_PATH, "%s/%s", path, link_target);
     int result = list(tar_fd,path,entries,no_entries);
     free(new_path);
     if (result < 0) {
