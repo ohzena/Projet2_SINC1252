@@ -246,28 +246,53 @@ int is_symlink(int tar_fd, char *path) {
  *         any other size otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-    tar_header_t header;
-    ssize_t read_size;
+  int entry_count = 0;
 
-    lseek(tar_fd, 0, SEEK_SET);
-
-    size_t count = 0;
-    while ((read_size = read(tar_fd, &header, sizeof(tar_header_t))) > 0) {
-
-        if (strncmp(path, header.name, strlen(path)) == 0) {
-
-            if (header.typeflag == DIRTYPE || header.typeflag == REGTYPE || header.typeflag == AREGTYPE) {
-
-                strcpy(entries[count], header.name);
-                count++;
-            }
-        }
-        lseek(tar_fd, TAR_INT(header.size), 1);
+  // Read the tar headers until we reach the end of the archive.
+  while (*no_entries > 0) {
+    // Read a tar header.
+    char header[512];
+    ssize_t bytes_read = read(tar_fd, header, 512);
+    if (bytes_read == 0) {
+      // End of archive reached.
+      break;
+    }
+    if (bytes_read < 0 || (size_t)bytes_read < 512) {
+      // Invalid header.
+      return -1;
     }
 
-    *no_entries = count;
+    // Check if the entry is in the given path.
+    if (strncmp(header, path, strlen(path)) == 0) {
+      // Check if the entry is a directory or a regular file, or a symlink.
+      if (header[156] == '5') {
+        // The entry is a directory.
+        // Add it to the entries array.
+        strcpy(entries[entry_count++], header);
+        (*no_entries)--;
+      } else if (header[156] == '0') {
+        // The entry is a regular file.
+        // Add it to the entries array.
+        strcpy(entries[entry_count++], header);
+        (*no_entries)--;
+      } else if (header[156] == '2') {
+        // The entry is a symlink.
+        // Resolve the symlink by updating the path to its linked-to entry.
+        path = &header[157];
+      }
+    }
 
-    return (count > 0);
+    // Skip to the next header by seeking to the correct position in the file.
+    int file_size = TAR_INT(&header[124]);
+    if (lseek(tar_fd, file_size + (file_size % 512), SEEK_CUR) < 0) {
+      return -1;
+    }
+  }
+
+  // Update the number of listed entries.
+  *no_entries = entry_count;
+
+  return entry_count > 0 ? entry_count : -1;
 }
 
 size_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
