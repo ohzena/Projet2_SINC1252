@@ -325,7 +325,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
       free(header);
       return -1;
     }
-    snprintf(new_path, MAX_PATH, "%s/%s", path, link_target);
+    snprintf(new_path, 260, "%s/%s", path, link_target);
     int result = list(tar_fd,path,entries,no_entries);
     free(new_path);
     if (result < 0) {
