@@ -247,7 +247,6 @@ int is_symlink(int tar_fd, char *path) {
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   int entry_count = 0;
-
   // Read the tar headers until we reach the end of the archive.
   while (*no_entries > 0) {
     // Read a tar header.
