@@ -246,31 +246,84 @@ int is_symlink(int tar_fd, char *path) {
  *         any other size otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
+  if (tar_fd < 0 || path == NULL || entries == NULL || no_entries == NULL) {
+    return -1;
+  }
+
   if (!exists(tar_fd, path)) {
     return 0;
   }
 
-  tar_header_t* header;
-  read(tar_fd, header, sizeof(tar_header_t));
+  tar_header_t* header = malloc(sizeof(tar_header_t));
+  if (header == NULL) {
+    return -1;
+  }
+
+  int read_bytes = read(tar_fd, header, sizeof(tar_header_t));
+  if (read_bytes < 0) {
+    free(header);
+    return -1;
+  } else if (read_bytes == 0) {
+    free(header);
+    return 0;
+  }
 
   if (header->typeflag == DIRTYPE) {
     int count = 0;
-    tar_header_t* curr_header;
-    while (read(tar_fd, curr_header, sizeof(tar_header_t)) > 0) {
+    tar_header_t* curr_header = malloc(sizeof(tar_header_t));
+    if (curr_header == NULL) {
+      free(header);
+      return -1;
+    }
+
+    while ((read_bytes = read(tar_fd, curr_header, sizeof(tar_header_t))) > 0) {
       if (strncmp(curr_header->name, path, strlen(path)) == 0) {
         entries[count] = strdup(curr_header->name);
+        if (entries[count] == NULL) {
+          free(header);
+          free(curr_header);
+          return -1;
+        }
         count++;
       }
     }
+
+    if (read_bytes < 0) {
+      for (int i = 0; i < count; i++) {
+        free(entries[i]);
+      }
+      free(header);
+      free(curr_header);
+      return -1;
+    }
+
     *no_entries = count;
+    free(curr_header);
   } else if (header->typeflag == SYMTYPE) {
     char* link_target = header->linkname;
+    if (link_target == NULL) {
+      free(header);
+      return -1;
+    }
+
     char* new_path = malloc(strlen(path) + strlen(link_target) + 2);
+    if (new_path == NULL) {
+      free(header);
+      return -1;
+    }
     sprintf(new_path, "%s/%s", path, link_target);
-    list(tar_fd, new_path, entries, no_entries);
+    int result = list(tar_fd,path,entries,no_entries);
     free(new_path);
+    if (result < 0) {
+      free(header);
+      return -1;
+    }
+  } else {
+    free(header);
+    return 0;
   }
 
+  free(header);
   return *no_entries;
 }
 
