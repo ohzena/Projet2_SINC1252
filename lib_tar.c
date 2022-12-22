@@ -158,25 +158,35 @@ int is_dir(int tar_fd, char *path) {
  *         any other size otherwise.
  */
 int is_symlink(int tar_fd, char *path) {
-  tar_header_t header;
-  ssize_t read_size;
+  // Check if the entry exists in the tar archive
+  if (exists(tar_fd, path) == 0) {
+    return 0;
+  }
 
-  lseek(tar_fd, 0, SEEK_SET);  
-
-  while ((read_size = read(tar_fd, &header, sizeof(tar_header_t))) > 0) {
-    // If the current header's name field matches the given path, check if the entry is a symlink
-    if (strcmp(path, header.name) == 0) {
+  // Read the tar header for the entry
+  struct tar_header header;
+  lseek(tar_fd, 0, SEEK_SET);
+  while (read(tar_fd, &header, BLOCK_SIZE) > 0) {
+    // Check if the name field of the header matches the given path
+    if (strcmp(header.name, path) == 0) {
+      // Check if the typeflag field is set to 'L'
       if (header.typeflag == SYMTYPE) {
-        return 1;  
+        return 1;
       } else {
-        return 0; 
+        return 0;
       }
     }
 
-    // Move file descriptor to the next header
-    lseek(tar_fd, TAR_INT(header.size), 1);  
+    // Calculate the size of the entry in blocks
+    int size = TAR_INT(header.size);
+    int blocks = (size / BLOCK_SIZE) + ((size % BLOCK_SIZE) ? 1 : 0);
+
+    // Seek to the next entry in the tar archive
+    lseek(tar_fd, blocks * BLOCK_SIZE, SEEK_CUR);
   }
-  return 0; 
+
+  // Return 0 if the entry was not found
+  return 0;
 }
 
 /**
