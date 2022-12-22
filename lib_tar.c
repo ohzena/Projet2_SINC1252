@@ -284,6 +284,7 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
 	if (entries[entry_count] == NULL) {
         perror("malloc");
         exit(EXIT_FAILURE);
+      }
         strcpy(entries[entry_count++], header);
         (*no_entries)--;
       } else if (header[156] == '2') {
@@ -306,15 +307,13 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   return entry_count > 0 ? entry_count : -1;
 }
 
-size_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
+ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
   tar_header_t header;
   while (read(tar_fd, &header, BLOCK_SIZE) > 0) {
     // Check if the entry is the file we are looking for.
     if (strcmp(header.name, path) == 0) {
       // Check if the entry is a regular file.
-      if (! is_file(tar_fd, path) && ! is_symlink(tar_fd, path)) {
-        return -1;
-      }
+      if (! is_file(tar_fd, path) && ! is_symlink(tar_fd, path)) return -1;
 
       // Check if the entry is a symlink, and resolve it if necessary.
       if (header.typeflag == SYMTYPE) {
@@ -324,39 +323,27 @@ size_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *l
 
       // Check if the offset is within the file bounds.
       int file_size = TAR_INT(header.size);
-      if (offset > file_size) {
-        return -2;
-      }
+      if (offset > file_size) return -2;
 
       // Seek to the correct position in the file.
-      if (lseek(tar_fd, offset, SEEK_CUR) < 0) {
-        return -1;
-      }
+      if (lseek(tar_fd, offset, SEEK_CUR) < 0) return -1;
 
       // Read the file into the destination buffer.
       ssize_t bytes_read = read(tar_fd, dest, *len);
-      if (bytes_read < 0) {
-        return -1;
-      }
-
+      if (bytes_read < 0) return -1;
       *len = bytes_read;
 
       // Check if we have read the entire file.
       if (bytes_read < file_size - offset) {
         return file_size - offset - bytes_read;
-      } else {
-        return 0;
-      }
+      } else { return 0; }
     } else {
       // Skip to the next header by seeking to the correct position in the file.
       int file_size = TAR_INT(header.size);
-      if (lseek(tar_fd, file_size + (file_size % BLOCK_SIZE), SEEK_CUR) < 0) {
-        return -1;
-      }
+      if (lseek(tar_fd, file_size + (file_size % BLOCK_SIZE), SEEK_CUR) < 0) return -1;
     }
-  }
 
+  }
   // File not found in the archive.
   return -1;
-}}
-
+}
