@@ -247,9 +247,6 @@ int is_symlink(int tar_fd, char *path) {
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
   int entry_count = 0;
-  if (!exists(tar_fd, path)) {
-    return 0;
-  }
   // Read the tar headers until we reach the end of the archive.
   while (*no_entries > 0) {
     // Read a tar header.
@@ -270,20 +267,11 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
       if (header[156] == '5') {
         // The entry is a directory.
         // Add it to the entries array.
-	entries[entry_count] = malloc(100);
-	if (entries[entry_count] == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-      }
         strcpy(entries[entry_count++], header);
         (*no_entries)--;
       } else if (header[156] == '0') {
         // The entry is a regular file.
         // Add it to the entries array.
-	entries[entry_count] = malloc(100);
-	if (entries[entry_count] == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
         strcpy(entries[entry_count++], header);
         (*no_entries)--;
       } else if (header[156] == '2') {
