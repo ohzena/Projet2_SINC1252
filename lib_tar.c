@@ -246,65 +246,32 @@ int is_symlink(int tar_fd, char *path) {
  *         any other size otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-  int entry_count = 0;
   if (!exists(tar_fd, path)) {
     return 0;
   }
-  // Read the tar headers until we reach the end of the archive.
-  while (*no_entries > 0) {
-    // Read a tar header.
-    char header[512];
-    ssize_t bytes_read = read(tar_fd, header, 512);
-    if (bytes_read == 0) {
-      // End of archive reached.
-      break;
-    }
-    if (bytes_read < 0 || (size_t)bytes_read < 512) {
-      // Invalid header.
-      return -1;
-    }
 
-    // Check if the entry is in the given path.
-    if (strncmp(header, path, strlen(path)) == 0) {
-      // Check if the entry is a directory or a regular file, or a symlink.
-      if (header[156] == '5') {
-        // The entry is a directory.
-        // Add it to the entries array.
-	entries[entry_count] = malloc(100);
-	if (entries[entry_count] == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-      }
-        strcpy(entries[entry_count++], header);
-        (*no_entries)--;
-      } else if (header[156] == '0') {
-        // The entry is a regular file.
-        // Add it to the entries array.
-	entries[entry_count] = malloc(100);
-	if (entries[entry_count] == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-      }
-        strcpy(entries[entry_count++], header);
-        (*no_entries)--;
-      } else if (header[156] == '2') {
-        // The entry is a symlink.
-        // Resolve the symlink by updating the path to its linked-to entry.
-        path = &header[157];
-      }
-    }
+  tar_header_t* header;
+  read(tar_fd, header, sizeof(tar_header_t));
 
-    // Skip to the next header by seeking to the correct position in the file.
-    int file_size = TAR_INT(&header[124]);
-    if (lseek(tar_fd, file_size + (file_size % 512), SEEK_CUR) < 0) {
-      return -1;
+  if (header->typeflag == DIRTYPE) {
+    int count = 0;
+    tar_header_t* curr_header;
+    while (read(tar_fd, curr_header, sizeof(tar_header_t)) > 0) {
+      if (strncmp(curr_header->name, path, strlen(path)) == 0) {
+        entries[count] = strdup(curr_header->name);
+        count++;
+      }
     }
+    *no_entries = count;
+  } else if (header->typeflag == SYMTYPE) {
+    char* link_target = header->linkname;
+    char* new_path = malloc(strlen(path) + strlen(link_target) + 2);
+    sprintf(new_path, "%s/%s", path, link_target);
+    list(tar_fd, new_path, entries, no_entries);
+    free(new_path);
   }
 
-  // Update the number of listed entries.
-  *no_entries = entry_count;
-
-  return entry_count > 0 ? entry_count : -1;
+  return *no_entries;
 }
 
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
