@@ -246,65 +246,107 @@ int is_symlink(int tar_fd, char *path) {
  *         any other size otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-  int entry_count = 0;
-  if (!exists(tar_fd, path)) {
+  int nb = 0;
+  int index = 0; // Index for entries array
+
+  // Check if path is a directory or symlink
+  if (!is_dir(tar_fd, path) && !is_symlink(tar_fd, path)) {
+    *no_entries = 0;
     return 0;
   }
-  // Read the tar headers until we reach the end of the archive.
-  while (*no_entries > 0) {
-    // Read a tar header.
-    char header[512];
-    ssize_t bytes_read = read(tar_fd, header, 512);
-    if (bytes_read == 0) {
-      // End of archive reached.
-      break;
-    }
-    if (bytes_read < 0 || (size_t)bytes_read < 512) {
-      // Invalid header.
+
+  // Allocate memory for record
+  char *record = malloc(100);
+  if (!record) {
+    perror("malloc error in list");
+    return -1;
+  }
+  strcpy(record, "/"); // Initialize record to a value that cannot be the name of an entry
+
+  while (1) {
+    tar_header_t header;
+    if (pread(tar_fd, &header, sizeof(tar_header_t), nb*sizeof(tar_header_t)) < 0) {
+      perror("pread error in list");
+      free(record);
       return -1;
     }
 
-    // Check if the entry is in the given path.
-    if (strncmp(header, path, strlen(path)) == 0) {
-      // Check if the entry is a directory or a regular file, or a symlink.
-      if (header[156] == '5') {
-        // The entry is a directory.
-        // Add it to the entries array.
-	entries[entry_count] = malloc(100);
-	if (entries[entry_count] == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
+    // Check if header.name is equal to path
+    if (!strcmp(header.name, path)) {
+      // If header is a directory, list its entries
+      if (header.typeflag == DIRTYPE) {
+        int nb2 = nb + 1; // Start with next header
+        while (1) {
+          tar_header_t entry;
+          if (pread(tar_fd, &entry, sizeof(tar_header_t), nb2*sizeof(tar_header_t)) < 0) {
+            perror("pread error in list");
+            free(record);
+            return -1;
+          }
+
+          // Check if entry is a sub-entry of the directory
+          if (!strncmp(entry.name, path, strlen(path))) {
+            // Check if entry has already been listed
+            if (strncmp(entry.name, record, strlen(record))) {
+              // If entry is not a sub-entry and has not been listed, copy it to entries array
+              memcpy(entries[index], entry.name, strlen(entry.name));
+              index++;
+              strcpy(record, entry.name); // Update record to the last listed entry
+            }
+          }
+          // If header is not a symlink or a directory, return 1
+          else if (!(header.typeflag == LNKTYPE || header.typeflag == SYMTYPE)) {
+            *no_entries = index;
+            free(record);
+            return 1;
+          }
+
+          // Calculate the number of blocks to skip based on the size of the entry
+          if (TAR_INT(entry.size) % BLOCKSIZE == 0) {
+            nb2 += (1 + TAR_INT(entry.size) / BLOCKSIZE);
+          }
+          else {
+            nb2 += (2 + TAR_INT(entry.size) / BLOCKSIZE);
+          }
+        }
       }
-        strcpy(entries[entry_count++], header);
-        (*no_entries)--;
-      } else if (header[156] == '0') {
-        // The entry is a regular file.
-        // Add it to the entries array.
-	entries[entry_count] = malloc(100);
-	if (entries[entry_count] == NULL) {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-      }
-        strcpy(entries[entry_count++], header);
-        (*no_entries)--;
-      } else if (header[156] == '2') {
-        // The entry is a symlink.
-        // Resolve the symlink by updating the path to its linked-to entry.
-        path = &header[157];
+      // If header is a symlink, run list with the linked-to directory
+      else if (header.typeflag == LNKTYPE || header.typeflag == SYMTYPE) {
+        // Check if linked-to directory is a file
+        if (is_file(tar_fd, header.linkname + 2)) {
+          printf("%s\n", header.linkname + 2);
+          return list(tar_fd, header.linkname + 2, entries, no_entries);
+        }
+        return list(tar_fd, strcat(header.linkname, "/") + 2, entries, no_entries);
       }
     }
 
-    // Skip to the next header by seeking to the correct position in the file.
-    int file_size = TAR_INT(&header[124]);
-    if (lseek(tar_fd, file_size + (file_size % 512), SEEK_CUR) < 0) {
-      return -1;
+    // Check if end of tar archive has been reached
+    if (!strlen((char *) &header)) {
+      tar_header_t header2;
+      if (pread(tar_fd, &header2, sizeof(tar_header_t), (nb+1)*sizeof(tar_header_t)) < 0) {
+        perror("pread error in list");
+        free(record);
+        return -1;
+      }
+      if (!strlen((char *) &header2)) {
+        *no_entries = 0;
+        free(record);
+        return 0;
+      }
+    }
+
+    // Calculate the number of blocks to skip based on the size of the header
+    if (TAR_INT(header.size) % BLOCKSIZE == 0) {
+      nb += (1 + TAR_INT(header.size) / BLOCKSIZE);
+    }
+    else {
+      nb += (2 + TAR_INT(header.size) / BLOCKSIZE);
     }
   }
 
-  // Update the number of listed entries.
-  *no_entries = entry_count;
-
-  return entry_count > 0 ? entry_count : -1;
+  free(record);
+  return 0;
 }
 
 ssize_t read_file(int tar_fd, char *path, size_t offset, uint8_t *dest, size_t *len) {
