@@ -246,7 +246,7 @@ int is_symlink(int tar_fd, char *path) {
  *         any other size otherwise.
  */
 int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
-  int nb = 0;
+  int count = 0;
   int index = 0; // Index for entries array
 
   // Check if path is a directory or symlink
@@ -257,32 +257,21 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
 
   // Allocate memory for record
   char *record = malloc(100);
-  if (!record) {
-    perror("malloc error in list");
-    return -1;
-  }
+  if (!record) return -1;
   strcpy(record, "/"); // Initialize record to a value that cannot be the name of an entry
 
   while (1) {
     tar_header_t header;
-    if (pread(tar_fd, &header, sizeof(tar_header_t), nb*sizeof(tar_header_t)) < 0) {
-      perror("pread error in list");
-      free(record);
-      return -1;
-    }
+    if (pread(tar_fd, &header, sizeof(tar_header_t), count*sizeof(tar_header_t)) < 0) return -1;
 
     // Check if header.name is equal to path
     if (!strcmp(header.name, path)) {
       // If header is a directory, list its entries
       if (header.typeflag == DIRTYPE) {
-        int nb2 = nb + 1; // Start with next header
+        int counter = count + 1; // Start with next header
         while (1) {
           tar_header_t entry;
-          if (pread(tar_fd, &entry, sizeof(tar_header_t), nb2*sizeof(tar_header_t)) < 0) {
-            perror("pread error in list");
-            free(record);
-            return -1;
-          }
+          if (pread(tar_fd, &entry, sizeof(tar_header_t), counter*sizeof(tar_header_t)) < 0) return -1;
 
           // Check if entry is a sub-entry of the directory
           if (!strncmp(entry.name, path, strlen(path))) {
@@ -297,16 +286,15 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
           // If header is not a symlink or a directory, return 1
           else if (!(header.typeflag == LNKTYPE || header.typeflag == SYMTYPE)) {
             *no_entries = index;
-            free(record);
             return 1;
           }
 
           // Calculate the number of blocks to skip based on the size of the entry
-          if (TAR_INT(entry.size) % BLOCKSIZE == 0) {
-            nb2 += (1 + TAR_INT(entry.size) / BLOCKSIZE);
+          if (TAR_INT(entry.size) % BLOCK_SIZE == 0) {
+            counter += (1 + TAR_INT(entry.size) / BLOCK_SIZE);
           }
           else {
-            nb2 += (2 + TAR_INT(entry.size) / BLOCKSIZE);
+            counter += (2 + TAR_INT(entry.size) / BLOCK_SIZE);
           }
         }
       }
@@ -314,7 +302,6 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
       else if (header.typeflag == LNKTYPE || header.typeflag == SYMTYPE) {
         // Check if linked-to directory is a file
         if (is_file(tar_fd, header.linkname + 2)) {
-          printf("%s\n", header.linkname + 2);
           return list(tar_fd, header.linkname + 2, entries, no_entries);
         }
         return list(tar_fd, strcat(header.linkname, "/") + 2, entries, no_entries);
@@ -324,28 +311,22 @@ int list(int tar_fd, char *path, char **entries, size_t *no_entries) {
     // Check if end of tar archive has been reached
     if (!strlen((char *) &header)) {
       tar_header_t header2;
-      if (pread(tar_fd, &header2, sizeof(tar_header_t), (nb+1)*sizeof(tar_header_t)) < 0) {
-        perror("pread error in list");
-        free(record);
-        return -1;
-      }
+      if (pread(tar_fd, &header2, sizeof(tar_header_t), (count+1)*sizeof(tar_header_t)) < 0) return -1;
+      
       if (!strlen((char *) &header2)) {
         *no_entries = 0;
-        free(record);
         return 0;
       }
     }
 
     // Calculate the number of blocks to skip based on the size of the header
-    if (TAR_INT(header.size) % BLOCKSIZE == 0) {
-      nb += (1 + TAR_INT(header.size) / BLOCKSIZE);
+    if (TAR_INT(header.size) % BLOCK_SIZE == 0) {
+      count += (1 + TAR_INT(header.size) / BLOCK_SIZE);
     }
     else {
-      nb += (2 + TAR_INT(header.size) / BLOCKSIZE);
+      count += (2 + TAR_INT(header.size) / BLOCK_SIZE);
     }
   }
-
-  free(record);
   return 0;
 }
 
